@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>系统配置管理</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+<link href="./assets/styles.css" rel="stylesheet"/>
+</head>
+<body>
+<header>
+  <div class="title">⚙️ 系统配置</div>
+  <div class="actions">
+    <a class="btn ghost" href="./index.html">返回</a>
+    <button id="btn-save" class="btn primary">保存</button>
+  </div>
+</header>
+<div class="container">
+  <div id="toast" style="display:none"></div>
+  <div class="row">
+    <div class="card" style="flex:1">
+      <h3>检测配置</h3>
+      <div>监控路径</div>
+      <div id="log-paths"></div>
+      <div class="hint">监听的日志目录列表，支持多个路径；示例：/var/log、/opt/app/logs</div>
+      <div class="toolbar"><input id="add-path" class="input" placeholder="/var/log"/><button id="btn-add-path" class="btn">添加路径</button></div>
+      <div class="toolbar"><label>扫描间隔</label><input id="scan-interval" class="input" type="number" min="5" max="3600"/></div>
+      <div class="hint">检测引擎扫描频率，范围 5–3600 秒，默认 60 秒</div>
+      <div class="toolbar"><label>数据保留</label><input id="retention-days" class="input" type="number" min="1" max="365"/></div>
+      <div class="hint">历史数据保留天数，范围 1–365 天，默认 30 天；超过自动清理归档</div>
+    </div>
+    <div class="card" style="flex:1">
+      <h3>告警配置</h3>
+      <div class="toolbar"><label>启用邮件</label><input id="alerts-enabled" type="checkbox"/></div>
+      <div class="hint">开启后按配置的邮箱地址发送告警通知</div>
+      <div class="toolbar"><label>邮箱</label><input id="alerts-email" class="input" placeholder="name@example.com"/></div>
+      <div class="hint">至少填写一个合法邮箱地址，格式 name@example.com</div>
+      <div class="toolbar"><label>严重异常立即通知</label><input id="notify-critical" type="checkbox"/></div>
+      <div class="hint">开启后 critical 级别异常将即时发送通知</div>
+      <div class="toolbar"><label>静默期(分钟)</label><input id="silent-minutes" class="input" type="number"/></div>
+      <div class="hint">在静默期内对相同类型告警不重复通知，默认 30 分钟</div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <div class="card" style="flex:1">
+      <h3>显示配置</h3>
+      <div class="toolbar"><label>自动刷新(秒)</label><input id="ui-auto-refresh" class="input" type="number"/></div>
+      <div class="hint">Dashboard 自动刷新周期，默认 30 秒</div>
+      <div class="toolbar"><label>每页显示</label><input id="ui-page-size" class="input" type="number"/></div>
+      <div class="hint">历史查询每页展示条数，默认 20 条</div>
+      <div class="toolbar"><label>时间格式</label>
+        <select id="ui-time-format" class="input"><option value="24h">24h</option><option value="12h">12h</option></select>
+      </div>
+      <div class="hint">界面时间显示格式，24 小时制或 12 小时制</div>
+    </div>
+    <div class="card" style="flex:1">
+      <h3>安全配置</h3>
+      <div class="toolbar"><label>推送并发上限</label><input id="sse-max" class="input" type="number"/></div>
+      <div class="hint">SSE 同时在线客户端上限，默认 100</div>
+    </div>
+  </div>
+</div>
+<script type="module" src="./assets/settings.js"></script>
+</body>
+</html>
