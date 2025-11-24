@@ -5,6 +5,9 @@ import time
 import yaml
 import argparse
 from datetime import datetime
+import json
+import hashlib
+import socket
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -27,7 +30,8 @@ class ExceptionMonitor:
             'log_paths': [
                 '/var/log/kern.log',
                 '/var/log/syslog',
-                './test.log'
+                '../test.log',
+                '../test_real.log'
             ],
             'detectors': {
                 'oom': {
@@ -64,7 +68,7 @@ class ExceptionMonitor:
             return default_config
 
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, 'r', encoding='utf-8') as f:
                 user_config = yaml.safe_load(f) or {}
             
             # 深度合并配置
@@ -102,8 +106,11 @@ class ExceptionMonitor:
         total_files = 0
         total_detections = 0
         
+        base_dir = os.path.dirname(os.path.abspath(__file__))
         for log_path in self.config['log_paths']:
             abs_path = os.path.abspath(log_path)
+            if log_path.startswith('./') or log_path.startswith('../'):
+                abs_path = os.path.abspath(os.path.join(base_dir, log_path))
             if not os.path.exists(abs_path):
                 print(f"⚠️  跳过不存在的日志文件: {abs_path}")
                 continue
@@ -178,6 +185,71 @@ class ExceptionMonitor:
         }.get(result.get('severity', 'medium'), '📝')
         
         print(f"{severity_emoji} [{result['type'].upper()}] {result['message'][:100]}...")
+        try:
+            self.persist_event(result)
+        except Exception as e:
+            print(f"❌ 数据写入失败: {e}")
+
+    def persist_event(self, result):
+        """写入NDJSON并更新summary"""
+        data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..', 'data')
+        data_dir = os.path.abspath(data_dir)
+        os.makedirs(data_dir, exist_ok=True)
+        anomalies = os.path.join(data_dir, 'anomalies.ndjson')
+        summary_file = os.path.join(data_dir, 'summary.json')
+
+        detected_at = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+        source_file = result.get('file', '')
+        line_number = result.get('line_number', 0)
+        host_id = socket.gethostname()
+        msg = result.get('message', '')
+        raw_id = f"{host_id}{source_file}{line_number}{detected_at}{msg}".encode('utf-8')
+        eid = hashlib.sha256(raw_id).hexdigest()[:16]
+        sev_map = {"critical": "critical", "high": "major", "medium": "minor", "low": "minor"}
+        sev = sev_map.get(result.get('severity', 'medium'), 'minor')
+        event = {
+            "schema_version": "1.0",
+            "id": eid,
+            "type": result.get('type'),
+            "severity": sev,
+            "message": msg,
+            "source_file": source_file,
+            "line_number": line_number,
+            "detected_at": detected_at,
+            "host_id": host_id,
+            "processed": False
+        }
+        with open(anomalies, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(event) + "\n")
+        day_dir = os.path.join(data_dir, 'anomalies')
+        os.makedirs(day_dir, exist_ok=True)
+        day_file = os.path.join(day_dir, datetime.utcnow().strftime('%Y-%m-%d') + '.ndjson')
+        with open(day_file, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(event) + "\n")
+        if os.path.exists(summary_file):
+            with open(summary_file, 'r', encoding='utf-8') as f:
+                s = json.load(f)
+        else:
+            s = {
+                "schema_version": "1.0",
+                "date": datetime.utcnow().strftime('%Y-%m-%d'),
+                "total_anomalies": 0,
+                "by_severity": {"critical": 0, "major": 0, "minor": 0},
+                "by_type": {},
+                "hosts": [],
+                "trend": []
+            }
+        s['total_anomalies'] = int(s.get('total_anomalies', 0)) + 1
+        bs = s.get('by_severity', {"critical": 0, "major": 0, "minor": 0})
+        bs[sev] = int(bs.get(sev, 0)) + 1
+        s['by_severity'] = bs
+        bt = s.get('by_type', {})
+        t = event['type']
+        bt[t] = int(bt.get(t, 0)) + 1
+        s['by_type'] = bt
+        s['last_detection'] = detected_at
+        with open(summary_file, 'w', encoding='utf-8') as f:
+            json.dump(s, f)
     
     def show_statistics(self):
         """显示统计信息，按类型分类"""

@@ -1,0 +1,2 @@
+{"schema_version": "1.0", "id": "18560fea4a80887d", "type": "oom", "severity": "major", "message": "Out of memory: Killed process 1234 (python)", "source_file": "", "line_number": 0, "detected_at": "2025-11-24T08:09:57Z", "host_id": "Alcor", "processed": false}
+{"schema_version": "1.0", "id": "a508227d51e3d57a", "type": "panic", "severity": "critical", "message": "Kernel panic - not syncing: System halted", "source_file": "", "line_number": 0, "detected_at": "2025-11-24T08:09:57Z", "host_id": "Alcor", "processed": false}

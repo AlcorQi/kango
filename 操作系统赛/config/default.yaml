@@ -1,7 +1,7 @@
 log_paths:
   - "/var/log/kern.log"
   - "/var/log/syslog"
-  - "./test.log"  # 添加测试日志路径
+  - "../test.log"  # 添加测试日志路径
 
 detectors:
   oom:
