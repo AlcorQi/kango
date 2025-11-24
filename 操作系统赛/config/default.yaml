@@ -1,0 +1,28 @@
+log_paths:
+  - "/var/log/kern.log"
+  - "/var/log/syslog"
+  - "./test.log"  # 添加测试日志路径
+
+detectors:
+  oom:
+    enabled: true
+    keywords:
+      - "Out of memory"
+      - "oom-killer"
+      - "Killed process"
+      - "Memory cgroup out of memory"
+    
+  panic:
+    enabled: true
+    keywords:
+      - "Kernel panic"
+      - "kernel panic"
+      - "not syncing"
+      - "System halted"
+      
+  reboot:
+    enabled: true
+    keywords:
+      - "unexpectedly shut down"
+      - "unexpected restart"
+      - "system reboot"
