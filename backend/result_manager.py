@@ -48,7 +48,7 @@ class ResultManager:
     
     def persist_event(self, result):
         """持久化存储事件"""
-        data_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..', 'data'))
+        data_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data'))
         os.makedirs(data_dir, exist_ok=True)
         anomalies = os.path.join(data_dir, 'anomalies.ndjson')
         summary_file = os.path.join(data_dir, 'summary.json')
