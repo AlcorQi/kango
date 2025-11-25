@@ -18,6 +18,8 @@ detectors:
       - "kernel panic"
       - "not syncing"
       - "System halted"
+      - "sysrq triggered crash"
+      - "Unable to mount root"
       
   reboot:
     enabled: true
@@ -25,6 +27,7 @@ detectors:
       - "unexpectedly shut down"
       - "unexpected restart"
       - "system reboot"
+      - "restart triggered by hardware"
   
   # 新增检测器配置
   oops:
@@ -50,6 +53,11 @@ detectors:
       - "task blocked"
       - "soft lockup"
       - "hard lockup"
+      - "blocked for more than 120 seconds"
+      - "task hung"
+      - "Show Blocked State"
+      - "Call Trace for"
+
       
   fs_exception:
     enabled: true
@@ -62,3 +70,4 @@ detectors:
       - "superblock corrupt"
       - "metadata corruption"
       - "fsck needed"
+      - "Buffer I/O error"
