@@ -30,7 +30,9 @@ class ConfigManager:
                         'Kernel panic',
                         'kernel panic',
                         'not syncing',
-                        'System halted'
+                        'System halted',
+                        'sysrq triggered crash',  # 新增关键词
+                        'Unable to mount root'    # 新增关键词
                     ]
                 },
                 'reboot': {
@@ -38,7 +40,8 @@ class ConfigManager:
                     'keywords': [
                         'unexpectedly shut down',
                         'unexpected restart',
-                        'system reboot'
+                        'system reboot',
+                        'restart triggered by hardware'  # 新增关键词
                     ]
                 },
                 'oops': {
@@ -64,7 +67,11 @@ class ConfigManager:
                         'hung task',
                         'task blocked',
                         'soft lockup',
-                        'hard lockup'
+                        'hard lockup',
+                        'blocked for more than 120 seconds',  # 新增关键词
+                        'task hung',  # 新增关键词
+                        'Show Blocked State',  # 新增关键词
+                        'Call Trace for'  # 新增关键词
                     ]
                 },
                 'fs_exception': {
@@ -77,7 +84,8 @@ class ConfigManager:
                         'file system corruption',
                         'superblock corrupt',
                         'metadata corruption',
-                        'fsck needed'
+                        'fsck needed',
+                        'Buffer I/O error'  # 新增关键词
                     ]
                 }
             }

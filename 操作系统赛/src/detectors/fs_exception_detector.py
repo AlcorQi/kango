@@ -11,7 +11,7 @@ class FSExceptionDetector(BaseDetector):
         keywords = self.config.get('keywords', [])
         if self.match_keywords(line, keywords):
             return {
-                'type': 'fs_error',
+                'type': 'fs_exception',
                 'severity': 'major',
                 'message': line.strip(),
                 'timestamp': time.time(),

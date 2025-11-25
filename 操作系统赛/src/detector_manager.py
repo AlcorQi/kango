@@ -74,6 +74,10 @@ class DetectorManager:
         panic_issues = self.detect_panic_state()
         issues.extend(panic_issues)
         
+        # 检测异常重启模式
+        reboot_issues = self.detect_reboot_state()
+        issues.extend(reboot_issues)
+        
         return issues
     
     def detect_deadlock_state(self):
@@ -88,17 +92,8 @@ class DetectorManager:
                 sysrq_enabled = False
             
             if not sysrq_enabled:
-                print("⚠️  SysRq未启用，无法进行精确死锁检测")
-                # 即使SysRq未启用，仍然尝试基本的死锁检测
+                print("⚠️  SysRq未启用，使用基本死锁检测")
                 return self.detect_basic_deadlock()
-            
-            # 触发SysRq显示阻塞任务
-            result = subprocess.run(
-                ['echo', 'w'],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
             
             # 检查D状态（不可中断睡眠）的任务
             ps_result = subprocess.run(
@@ -109,12 +104,14 @@ class DetectorManager:
             )
             
             # 分析进程状态
+            d_state_count = 0
             for line in ps_result.stdout.split('\n'):
                 if ' D ' in line and not ('kworker' in line or 'ksoftirqd' in line):
                     parts = line.split()
                     if len(parts) > 10:
                         pid = parts[1]
                         cmd = ' '.join(parts[10:])
+                        d_state_count += 1
                         
                         # 获取进程的堆栈信息
                         try:
@@ -123,7 +120,9 @@ class DetectorManager:
                                 with open(stack_path, 'r') as stack_file:
                                     stack_trace = stack_file.read()
                                 
-                                if 'mutex_lock' in stack_trace or 'semaphore' in stack_trace:
+                                # 检查是否在等待锁
+                                lock_indicators = ['mutex_lock', 'semaphore', 'spin_lock', 'down_read', 'down_write']
+                                if any(lock_indicator in stack_trace for lock_indicator in lock_indicators):
                                     issues.append({
                                         'type': 'deadlock',
                                         'severity': 'critical',
@@ -134,7 +133,28 @@ class DetectorManager:
                                         'line_number': 0
                                     })
                         except (PermissionError, FileNotFoundError):
-                            pass
+                            # 如果没有权限访问/proc/pid/stack，仍然报告D状态进程
+                            issues.append({
+                                'type': 'deadlock',
+                                'severity': 'high',
+                                'message': f'进程处于D状态(可能死锁): PID {pid} ({cmd})',
+                                'timestamp': time.time(),
+                                'formatted_time': time.strftime('%Y-%m-%d %H:%M:%S'),
+                                'file': 'process_state',
+                                'line_number': 0
+                            })
+            
+            # 如果没有检测到具体的死锁，但有很多D状态进程，也报告
+            if d_state_count > 0 and len(issues) == 0:
+                issues.append({
+                    'type': 'deadlock',
+                    'severity': 'medium',
+                    'message': f'检测到 {d_state_count} 个进程处于D状态(不可中断睡眠)，可能存在系统资源争用',
+                    'timestamp': time.time(),
+                    'formatted_time': time.strftime('%Y-%m-%d %H:%M:%S'),
+                    'file': 'process_state',
+                    'line_number': 0
+                })
                             
         except Exception as e:
             print(f"⚠️  死锁状态检测失败: {e}")
@@ -154,15 +174,18 @@ class DetectorManager:
             )
             
             d_state_count = 0
+            d_state_processes = []
             for line in ps_result.stdout.split('\n'):
                 if ' D ' in line and not ('kworker' in line or 'ksoftirqd' in line):
                     d_state_count += 1
+                    d_state_processes.append(line.strip())
             
-            if d_state_count > 2:  # 如果有多个非内核进程处于D状态，可能是死锁
+            if d_state_count > 0:
+                process_list = "\n".join(d_state_processes[:3])  # 只显示前3个进程
                 issues.append({
                     'type': 'deadlock',
-                    'severity': 'high',
-                    'message': f'检测到 {d_state_count} 个进程处于D状态(不可中断睡眠)，可能存在死锁',
+                    'severity': 'high' if d_state_count > 1 else 'medium',
+                    'message': f'检测到 {d_state_count} 个进程处于D状态(不可中断睡眠): \n{process_list}',
                     'timestamp': time.time(),
                     'formatted_time': time.strftime('%Y-%m-%d %H:%M:%S'),
                     'file': 'process_state',
@@ -179,23 +202,29 @@ class DetectorManager:
         issues = []
         try:
             # 检查崩溃转储目录
-            crash_dirs = ['/var/crash', '/var/log/dump', '/var/log/kdump']
+            crash_dirs = ['/var/crash', '/var/log/dump', '/var/log/kdump', '/var/crash/kernel']
+            crash_files_found = []
+            
             for crash_dir in crash_dirs:
                 if os.path.exists(crash_dir):
                     try:
                         for item in os.listdir(crash_dir):
                             if any(item.endswith(ext) for ext in ['.crash', '.dump', '.vmcore']):
-                                issues.append({
-                                    'type': 'panic',
-                                    'severity': 'critical',
-                                    'message': f'发现系统崩溃转储文件: {os.path.join(crash_dir, item)}',
-                                    'timestamp': time.time(),
-                                    'formatted_time': time.strftime('%Y-%m-%d %H:%M:%S'),
-                                    'file': 'crash_dump',
-                                    'line_number': 0
-                                })
+                                crash_files_found.append(os.path.join(crash_dir, item))
                     except (PermissionError, FileNotFoundError):
                         continue
+            
+            if crash_files_found:
+                for crash_file in crash_files_found[:3]:  # 限制显示数量
+                    issues.append({
+                        'type': 'panic',
+                        'severity': 'critical',
+                        'message': f'发现内核崩溃转储文件: {crash_file}',
+                        'timestamp': time.time(),
+                        'formatted_time': time.strftime('%Y-%m-%d %H:%M:%S'),
+                        'file': 'crash_dump',
+                        'line_number': 0
+                    })
             
             # 检查kexec状态
             kexec_path = '/sys/kernel/kexec_crash_loaded'
@@ -214,8 +243,67 @@ class DetectorManager:
                             })
                 except (PermissionError, IOError):
                     pass
+            
+            # 检查是否有panic相关的内核参数
+            try:
+                cmdline_result = subprocess.run(
+                    ['cat', '/proc/cmdline'],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                if 'crashkernel' in cmdline_result.stdout:
+                    issues.append({
+                        'type': 'panic',
+                        'severity': 'info',
+                        'message': '系统配置了崩溃内存(crashkernel)，支持内核崩溃转储',
+                        'timestamp': time.time(),
+                        'formatted_time': time.strftime('%Y-%m-%d %H:%M:%S'),
+                        'file': 'kernel_config',
+                        'line_number': 0
+                    })
+            except:
+                pass
                     
         except Exception as e:
             print(f"⚠️  Panic状态检测失败: {e}")
         
+        return issues
+    
+    def detect_reboot_state(self):
+        """检测异常重启模式"""
+        issues = []
+        try:
+            # 检查系统启动时间
+            uptime_result = subprocess.run(
+                ['uptime', '-s'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            if uptime_result.returncode == 0:
+                boot_time = uptime_result.stdout.strip()
+                # 计算系统运行时间
+                boot_timestamp = time.mktime(time.strptime(boot_time, '%Y-%m-%d %H:%M:%S'))
+                current_time = time.time()
+                uptime_seconds = current_time - boot_timestamp
+                uptime_hours = uptime_seconds / 3600
+                
+                # 如果系统运行时间很短（小于1小时），可能是异常重启
+                if uptime_hours < 1:
+                    issues.append({
+                        'type': 'reboot',
+                        'severity': 'medium',
+                        'message': f'系统最近重启过，启动时间: {boot_time} (运行{uptime_hours:.1f}小时)',
+                        'timestamp': time.time(),
+                        'formatted_time': time.strftime('%Y-%m-%d %H:%M:%S'),
+                        'file': 'system_uptime',
+                        'line_number': 0
+                    })
+                
+        except Exception as e:
+            # 忽略错误，不影响主要功能
+            pass
+            
         return issues

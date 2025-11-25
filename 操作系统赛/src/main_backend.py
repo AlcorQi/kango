@@ -31,6 +31,14 @@ class ExceptionMonitor:
         total_files = 0
         total_detections = 0
 
+        # 首先检测系统级别问题（死锁、panic状态等）
+        print("🔍 正在检测系统状态问题...")
+        system_issues = self.detector_manager.detect_system_issues()
+        for issue in system_issues:
+            self.result_manager.add_result(issue)
+        total_detections += len(system_issues)
+        print(f"   检测到 {len(system_issues)} 个系统状态问题")
+
         # 收集所有候选日志文件
         candidate_files = self.file_scanner.collect_log_files()
         
@@ -45,14 +53,6 @@ class ExceptionMonitor:
         if self.file_scanner.should_read_journal():
             print("📖 正在读取: systemd journalctl")
             total_detections += self.journal_scanner.scan_journal()
-        
-        # 检测系统级别问题（死锁、panic状态等）
-        print("🔍 正在检测系统状态问题...")
-        system_issues = self.detector_manager.detect_system_issues()
-        for issue in system_issues:
-            self.result_manager.add_result(issue)
-        total_detections += len(system_issues)
-        print(f"   检测到 {len(system_issues)} 个系统状态问题")
         
         # 输出扫描统计
         elapsed_time = self.result_manager.get_elapsed_time()
@@ -117,7 +117,7 @@ def parse_args():
 def main():
     """主程序入口"""
     print("=" * 60)
-    print("🖥️  操作系统异常信息检测工具 v1.1")
+    print("🖥️  操作系统异常信息检测工具 v1.2")
     print("增强特性: 系统状态检测(SysRq死锁、崩溃转储分析)")
     print("=" * 60)
     
