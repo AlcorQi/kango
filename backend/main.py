@@ -6,12 +6,16 @@ import argparse
 # 添加项目根目录到 Python 路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config_master import ConfigManager
-from file_scanner import FileScanner
-from detector_manager import DetectorManager
+from anomaly_config.config_master import ConfigManager
+
+from detective.detector_ctrl import DetectorManager
+
+from log.file_scanner import FileScanner
+from log.journal_scanner import JournalScanner
+
 from result_manager import ResultManager
-from journal_scanner import JournalScanner
-from report_generator import ReportGenerator
+
+from report.report_generator import ReportGenerator
 
 class ExceptionMonitor:
     def __init__(self, config_path=None):
@@ -102,11 +106,11 @@ def parse_args():
     )
     
     parser.add_argument('-c', '--config',
-                       default='./操作系统赛/config/default.yaml',
+                       default='./backend/anomaly_config/default.yaml',
                        help='指定配置文件路径')
     
     parser.add_argument('-o', '--output',
-                       default='./操作系统赛/report.txt',
+                       default='./backend/report/report.txt',
                        help='指定输出报告文件路径')
     
     parser.add_argument('--sysrq-check', action='store_true',
@@ -117,8 +121,8 @@ def parse_args():
 def main():
     """主程序入口"""
     print("=" * 60)
-    print("🖥️  操作系统异常信息检测工具 v1.2")
-    print("增强特性: 系统状态检测(SysRq死锁、崩溃转储分析)")
+    print("🖥️  操作系统异常信息检测工具 v2.0")
+    print("增强特性: 系统状态检测(SysRq死锁、崩溃转储分析、oops误报修复)")
     print("=" * 60)
     
     # 解析命令行参数

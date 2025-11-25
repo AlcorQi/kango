@@ -12,7 +12,7 @@ class ConfigManager:
         return {
             'log_paths': [
                 '/var/log',
-                './test.log'
+                './backend/log/test.log'
             ],
             'detectors': {
                 'oom': {

@@ -6,12 +6,12 @@ import time
 # 添加项目根目录到 Python 路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.detectors.oom_detector import OOMDetector
-from src.detectors.panic_detector import PanicDetector
-from src.detectors.reboot_detector import RebootDetector
-from src.detectors.oops_detector import OopsDetector
-from src.detectors.deadlock_detector import DeadlockDetector
-from src.detectors.fs_exception_detector import FSExceptionDetector
+from detective.oom_detector import OOMDetector
+from detective.panic_detector import PanicDetector
+from detective.reboot_detector import RebootDetector
+from detective.oops_detector import OopsDetector
+from detective.deadlock_detector import DeadlockDetector
+from detective.fs_exception_detector import FSExceptionDetector
 
 class DetectorManager:
     def __init__(self, config_manager):
