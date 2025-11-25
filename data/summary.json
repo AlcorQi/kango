@@ -1,1 +1,1 @@
-{"schema_version": "1.0", "date": "2025-11-24", "total_anomalies": 46, "by_severity": {"critical": 7, "major": 11, "minor": 28}, "by_type": {"oom": 11, "panic": 7, "reboot": 4, "oops": 8, "deadlock": 8, "fs_error": 8}, "hosts": [], "trend": [], "last_detection": "2025-11-24T08:54:58Z"}
+{"schema_version": "1.0", "date": "2025-11-24", "total_anomalies": 178, "by_severity": {"critical": 25, "major": 41, "minor": 112}, "by_type": {"oom": 41, "panic": 25, "reboot": 16, "oops": 32, "deadlock": 32, "fs_error": 32}, "hosts": [], "trend": [], "last_detection": "2025-11-25T09:29:28Z"}
