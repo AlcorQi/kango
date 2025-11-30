@@ -197,6 +197,9 @@ def ingest_loop():
         return
     ingest_started = True
     offsets = _load_offsets()
+    # 初始化最后扫描时间
+    last_scan_ts = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    
     while True:
         try:
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
@@ -208,6 +211,7 @@ def ingest_loop():
         paths = det.get('log_paths', [])
         enabled = det.get('enabled_detectors', [])
         files = _collect_paths(paths)
+        # 在每次扫描开始时更新最后扫描时间
         try:
             last_scan_ts = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
         except:
@@ -323,4 +327,12 @@ def init_alert_state():
     """初始化告警状态"""
     global alert_state
     alert_state = _load_alert_state()
+
+def get_last_scan_ts():
+    """获取最后扫描时间戳"""
+    global last_scan_ts
+    if last_scan_ts:
+        return last_scan_ts
+    return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+
 

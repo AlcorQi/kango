@@ -158,7 +158,7 @@ class Handler(SimpleHTTPRequestHandler):
         
         try:
             while True:
-                time.sleep(60)
+                time.sleep(1)
         except:
             remove_client(self)
             print(f"[DEBUG] SSE客户端断开: {self.client_address}")

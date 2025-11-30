@@ -2,6 +2,14 @@ import json
 import time
 from config import ANOMALIES_FILE, SUMMARY_FILE, SCHEMA_VERSION
 
+def _get_last_scan():
+    """获取最后扫描时间，避免循环导入"""
+    try:
+        from ingest_manager import get_last_scan_ts
+        return get_last_scan_ts()
+    except:
+        return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+
 def read_summary():
     """读取汇总数据"""
     with open(SUMMARY_FILE, 'r', encoding='utf-8') as f:
@@ -73,11 +81,13 @@ def compute_stats(window=None):
             if not last_detection or ev['detected_at'] > last_detection:
                 last_detection = ev['detected_at']
     
+    ls = _get_last_scan()
     return {
         "schema_version": SCHEMA_VERSION,
         "total_anomalies": total,
         "by_severity": by_severity,
         "by_type": by_type,
         "trend": [],
-        "last_detection": last_detection
+        "last_detection": last_detection,
+        "last_scan": ls
     }
