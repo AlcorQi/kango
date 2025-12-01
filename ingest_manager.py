@@ -5,6 +5,7 @@ import socket
 import hashlib
 import smtplib
 import threading
+import re
 from email.message import EmailMessage
 from config import DATA_DIR, CONFIG_FILE, ANOMALIES_FILE, SCHEMA_VERSION
 
@@ -15,6 +16,34 @@ ingest_started = False
 cleanup_started = False
 last_scan_ts = None
 alert_state = {}
+
+# 基于 backend/调试命令格式（模式选择）.md 的正则模式（做了简化）
+REGEX_PATTERNS = {
+    "oom": [
+        r"(?:Out\s+of\s+memory|OOM).*?(?:kill|terminat).*?process.*?\d+",
+        r"oom.*?killer.*?invoked.*?(?:gfp_mask|order)=\w+",
+    ],
+    "kernel_panic": [
+        r"(?:Kernel|kernel).*?panic.*?(?:not\s+syncing|System\s+halted)",
+        r"(?:Unable\s+to\s+mount|Cannot\s+mount).*?root.*?(?:filesystem|device)",
+    ],
+    "unexpected_reboot": [
+        r"(?:unexpected|unclean).*?(?:shut.*?down|restart|reboot)",
+        r"system.*?(?:reboot|restart).*?(?:initiated|triggered)",
+    ],
+    "fs_error": [
+        r"(?:filesystem|file\s+system).*?error.*?(?:corrupt|damage)",
+        r"(?:EXT4|XFS).*?(?:error|corruption).*?detected",
+    ],
+    "oops": [
+        r"OOPS?:.*?(?:general protection|GPF)",
+        r"(?:kernel|Kernel).*?BUG.*?at.*?\.(?:c|h):\d+",
+    ],
+    "deadlock": [
+        r"(?:possible|potential).*?deadlock.*?(?:detected|found)",
+        r"INFO.*?task.*?blocked.*?more.*?\d+.*?seconds",
+    ],
+}
 
 def _load_offsets():
     """加载文件偏移量"""
@@ -107,28 +136,59 @@ def _handle_alert(ev, cfg):
         alert_state[key] = now
         _save_alert_state(alert_state)
 
-def _match_types(line, enabled):
-    """匹配异常类型"""
+def _match_types(line, enabled, mode: str):
+    """匹配异常类型
+
+    :param line: 日志原始行
+    :param enabled: 已启用的检测类型列表
+    :param mode: 搜索 / 检测模式：keyword / regex / mixed
+    """
     s = line.lower()
     types = []
-    if 'oom' in enabled:
-        if ('out of memory' in s) or ('oom-killer' in s):
-            types.append('oom')
-    if 'kernel_panic' in enabled:
-        if 'kernel panic' in s:
-            types.append('kernel_panic')
-    if 'unexpected_reboot' in enabled:
-        if ('reboot' in s) or ('booting' in s):
-            types.append('unexpected_reboot')
-    if 'fs_error' in enabled:
-        if ('fs error' in s) or ('i/o error' in s) or ('filesystem corruption' in s) or ('ext4-fs error' in s) or ('xfs error' in s):
-            types.append('fs_error')
-    if 'oops' in enabled:
-        if 'oops:' in s:
-            types.append('oops')
-    if 'deadlock' in enabled:
-        if ('deadlock' in s) or ('recursive locking' in s):
-            types.append('deadlock')
+
+    use_keyword = mode in ("keyword", "mixed", None)
+    use_regex = mode in ("regex", "mixed")
+
+    # 关键字模式：简单 contains 匹配，性能最好
+    if use_keyword:
+        if "oom" in enabled:
+            if ("out of memory" in s) or ("oom-killer" in s) or ("oom killer" in s):
+                types.append("oom")
+        if "kernel_panic" in enabled:
+            if "kernel panic" in s or "kernel panic - not syncing" in s:
+                types.append("kernel_panic")
+        if "unexpected_reboot" in enabled:
+            if ("reboot" in s) or ("booting" in s):
+                types.append("unexpected_reboot")
+        if "fs_error" in enabled:
+            if (
+                ("fs error" in s)
+                or ("i/o error" in s)
+                or ("filesystem corruption" in s)
+                or ("ext4-fs error" in s)
+                or ("xfs error" in s)
+            ):
+                types.append("fs_error")
+        if "oops" in enabled:
+            if "oops:" in s or "kernel bug" in s:
+                types.append("oops")
+        if "deadlock" in enabled:
+            if ("deadlock" in s) or ("recursive locking" in s) or ("hung task" in s):
+                types.append("deadlock")
+
+    # 正则模式：使用更复杂的模式匹配，精度更高
+    if use_regex:
+        for t in enabled:
+            if t in REGEX_PATTERNS and t not in types:
+                for pat in REGEX_PATTERNS[t]:
+                    try:
+                        if re.search(pat, line, re.IGNORECASE):
+                            types.append(t)
+                            break
+                    except re.error:
+                        # 正则错误时跳过该模式
+                        continue
+
     return types
 
 def _severity_for(t):
@@ -210,6 +270,8 @@ def ingest_loop():
         interval = int(det.get('scan_interval_sec', 60))
         paths = det.get('log_paths', [])
         enabled = det.get('enabled_detectors', [])
+        # 从 config/config.json 中读取搜索 / 检测模式，默认 mixed
+        search_mode = det.get('search_mode', 'mixed')
         files = _collect_paths(paths)
         # 在每次扫描开始时更新最后扫描时间
         try:
@@ -232,7 +294,7 @@ def ingest_loop():
                         line_no += 1
                         ln += len(line.encode('utf-8', 'ignore'))
                         ts = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-                        types = _match_types(line, enabled)
+                        types = _match_types(line, enabled, search_mode)
                         for t in types:
                             raw = (socket.gethostname() + fp + str(line_no) + ts + line).encode('utf-8', 'ignore')
                             eid = hashlib.sha256(raw).hexdigest()[:16]
