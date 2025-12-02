@@ -7,7 +7,7 @@ import smtplib
 import threading
 import re
 from email.message import EmailMessage
-from config import DATA_DIR, CONFIG_FILE, ANOMALIES_FILE, SCHEMA_VERSION
+from config import DATA_DIR, CONFIG_FILE, ANOMALIES_FILE, SCHEMA_VERSION, read_config
 
 OFFSETS_FILE = os.path.join(DATA_DIR, 'ingest_offsets.json')
 ALERT_STATE_FILE = os.path.join(DATA_DIR, 'alert_state.json')
@@ -79,12 +79,28 @@ def _save_alert_state(s):
 
 def _send_email(to_addr, subject, body):
     """发送邮件"""
-    host = os.environ.get('SMTP_HOST')
-    port = int(os.environ.get('SMTP_PORT', '25'))
-    user = os.environ.get('SMTP_USER')
-    pwd = os.environ.get('SMTP_PASS')
-    sender = os.environ.get('SMTP_FROM', user or 'noreply@example.com')
+    cfg = {}
+    try:
+        cfg = read_config()
+    except:
+        cfg = {}
+    smtp = cfg.get('smtp', {})
+    host = smtp.get('host') or os.environ.get('SMTP_HOST')
+    port_raw = smtp.get('port') or os.environ.get('SMTP_PORT') or '25'
+    try:
+        port = int(port_raw)
+    except:
+        port = 25
+    user = smtp.get('user') or os.environ.get('SMTP_USER')
+    pwd = smtp.get('pass') or os.environ.get('SMTP_PASS')
+    sender = (smtp.get('from') or os.environ.get('SMTP_FROM') or (user or 'noreply@example.com'))
+    tls_cfg = smtp.get('tls')
+    tls = (str(tls_cfg).lower() in ('1','true','yes')) if tls_cfg is not None else (os.environ.get('SMTP_TLS') == '1')
     if not host or not to_addr:
+        try:
+            print(f"[ALERT] 邮件发送未执行: SMTP_HOST={bool(host)} 收件人={bool(to_addr)} 配置来源={'config' if smtp.get('host') else 'env'}")
+        except:
+            pass
         return False
     try:
         msg = EmailMessage()
@@ -94,13 +110,17 @@ def _send_email(to_addr, subject, body):
         msg.set_content(body)
         with smtplib.SMTP(host, port, timeout=10) as smtp:
             smtp.ehlo()
-            if os.environ.get('SMTP_TLS') == '1':
+            if tls:
                 smtp.starttls()
             if user and pwd:
                 smtp.login(user, pwd)
             smtp.send_message(msg)
         return True
-    except:
+    except Exception as e:
+        try:
+            print(f"[ALERT] 邮件发送失败: {e}")
+        except:
+            pass
         return False
 
 def _handle_alert(ev, cfg):

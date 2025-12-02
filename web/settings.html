@@ -55,6 +55,15 @@
       <div class="hint">开启后 critical 级别异常将即时发送通知</div>
       <div class="toolbar"><label>静默期(分钟)</label><input id="silent-minutes" class="input" type="number"/></div>
       <div class="hint">在静默期内对相同类型告警不重复通知，默认 30 分钟</div>
+      <hr/>
+      <h4 style="margin-top:4px">SMTP 配置</h4>
+      <div class="toolbar"><label>SMTP 主机</label><input id="smtp-host" class="input" placeholder="smtp.example.com"/></div>
+      <div class="toolbar"><label>SMTP 端口</label><input id="smtp-port" class="input" type="number" placeholder="587"/></div>
+      <div class="toolbar"><label>启用 TLS</label><input id="smtp-tls" type="checkbox"/></div>
+      <div class="toolbar"><label>SMTP 用户</label><input id="smtp-user" class="input" placeholder="name@example.com"/></div>
+      <div class="toolbar"><label>SMTP 密码/授权码</label><input id="smtp-pass" class="input" type="password"/></div>
+      <div class="toolbar"><label>发件人</label><input id="smtp-from" class="input" placeholder="name@example.com"/></div>
+      <div class="hint">示例：QQ邮箱使用 smtp.qq.com + 587 + TLS，密码为授权码</div>
     </div>
   </div>
   <div class="row" style="margin-top:12px">
