@@ -251,7 +251,11 @@ def _collect_paths(paths):
     return files
 
 def ingest_loop():
-    """日志摄取循环"""
+    """日志摄取循环（本地检测模式）
+    
+    注意：如果配置中 local_detection_enabled 为 False，此循环不会启动。
+    此时系统仅接收 Agent 上报的数据。
+    """
     global ingest_started, last_scan_ts
     if ingest_started:
         return
@@ -267,6 +271,14 @@ def ingest_loop():
         except:
             cfg = {}
         det = cfg.get('detection', {})
+        
+        # 检查是否启用本地检测
+        local_detection_enabled = det.get('local_detection_enabled', True)
+        if not local_detection_enabled:
+            # 如果禁用本地检测，等待一段时间后重新检查配置
+            time.sleep(60)
+            continue
+        
         interval = int(det.get('scan_interval_sec', 60))
         paths = det.get('log_paths', [])
         enabled = det.get('enabled_detectors', [])
@@ -319,10 +331,43 @@ def ingest_loop():
             except:
                 continue
         _save_offsets(offsets)
-        time.sleep(max(5, min(3600, interval)))
+        try:
+            rmax_now = int(det.get('retention_max_events', 0))
+            if rmax_now:
+                try:
+                    with open(ANOMALIES_FILE, 'r', encoding='utf-8') as f:
+                        total_lines = sum(1 for _ in f)
+                except:
+                    total_lines = 0
+                if total_lines > rmax_now:
+                    try:
+                        cleanup_once(cfg, "超过保留上限")
+                    except:
+                        pass
+        except:
+            pass
+        try:
+            start = max(5, min(3600, int(interval)))
+        except:
+            start = 60
+        waited = 0
+        while waited < start:
+            try:
+                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                    cfg2 = json.load(f)
+            except:
+                cfg2 = {}
+            det2 = cfg2.get('detection', {})
+            try:
+                cur = int(det2.get('scan_interval_sec', start))
+            except:
+                cur = start
+            if cur != start:
+                break
+            time.sleep(1)
+            waited += 1
 
 def cleanup_loop():
-    """清理循环"""
     global cleanup_started
     if cleanup_started:
         return
@@ -334,16 +379,23 @@ def cleanup_loop():
         except:
             cfg = {}
         det = cfg.get('detection', {})
+        ui = cfg.get('ui', {})
         rd = int(det.get('retention_days', 30))
         rmax = int(det.get('retention_max_events', 50000))
         cutoff = time.time() - rd * 86400
         try:
-            keep = []
+            print(f"[CLEANUP] 开始执行清理: 保留天数={rd}, 保留上限={rmax}")
+        except:
+            pass
+        try:
+            events = []
+            total_before = 0
             with open(ANOMALIES_FILE, 'r', encoding='utf-8') as f:
                 for line in f:
                     s = line.strip()
                     if not s:
                         continue
+                    total_before += 1
                     try:
                         ev = json.loads(s)
                     except:
@@ -355,13 +407,121 @@ def cleanup_loop():
                     except:
                         te = None
                     if te is None or te >= cutoff:
-                        keep.append((te or 0, s))
-            keep.sort(key=lambda x: x[0])
-            if rmax and len(keep) > rmax:
-                keep = keep[-rmax:]
-            with open(ANOMALIES_FILE, 'w', encoding='utf-8') as f:
-                for _, s in keep:
+                        events.append((te or 0, s))
+            events.sort(key=lambda x: x[0])
+            if rmax and len(events) > rmax:
+                events = events[-rmax:]
+            try:
+                with open(ANOMALIES_FILE, 'r+', encoding='utf-8') as f:
+                    f.seek(0)
+                    for _, s in events:
+                        f.write(s + "\n")
+                    f.truncate()
+                try:
+                    total_after = len(events)
+                    removed = max(0, total_before - total_after)
+                    print(f"[CLEANUP] 事件保留: 原={total_before}, 新={total_after}, 删除={removed}")
+                except:
+                    pass
+            except:
+                pass
+        except:
+            pass
+        try:
+            day_dir = os.path.join(DATA_DIR, 'anomalies')
+            if os.path.isdir(day_dir):
+                for name in os.listdir(day_dir):
+                    if not name.endswith('.ndjson'):
+                        continue
+                    base = name[:-7]
+                    try:
+                        t = time.strptime(base, '%Y-%m-%d')
+                        te = time.mktime(t)
+                    except:
+                        continue
+                    if te < cutoff:
+                        try:
+                            os.remove(os.path.join(day_dir, name))
+                        except:
+                            pass
+            try:
+                print("[CLEANUP] 日归档清理完成")
+            except:
+                pass
+        except:
+            pass
+        try:
+            offsets = _load_offsets()
+            changed = False
+            removed_cnt = 0
+            for fp in list(offsets.keys()):
+                try:
+                    if not os.path.exists(fp):
+                        del offsets[fp]
+                        changed = True
+                        removed_cnt += 1
+                except:
+                    continue
+            if changed:
+                _save_offsets(offsets)
+                try:
+                    print(f"[CLEANUP] 偏移表清理: 移除={removed_cnt}")
+                except:
+                    pass
+        except:
+            pass
+        try:
+            print("[CLEANUP] 下次清理将在 1800s 后执行")
+        except:
+            pass
+        time.sleep(1800)
+
+def cleanup_once(cfg, reason=None):
+    det = cfg.get('detection', {})
+    rd = int(det.get('retention_days', 30))
+    rmax = int(det.get('retention_max_events', 50000))
+    cutoff = time.time() - rd * 86400
+    try:
+        if reason:
+            print(f"[CLEANUP] 触发清理: {reason}")
+    except:
+        pass
+    try:
+        events = []
+        total_before = 0
+        with open(ANOMALIES_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                s = line.strip()
+                if not s:
+                    continue
+                total_before += 1
+                try:
+                    ev = json.loads(s)
+                except:
+                    continue
+                ts = ev.get('detected_at')
+                try:
+                    t = time.strptime(ts, '%Y-%m-%dT%H:%M:%SZ') if ts else None
+                    te = time.mktime(t) if t else None
+                except:
+                    te = None
+                if te is None or te >= cutoff:
+                    events.append((te or 0, s))
+        events.sort(key=lambda x: x[0])
+        if rmax and len(events) > rmax:
+            events = events[-rmax:]
+        try:
+            with open(ANOMALIES_FILE, 'r+', encoding='utf-8') as f:
+                f.seek(0)
+                for _, s in events:
                     f.write(s + "\n")
+                f.truncate()
+            try:
+                total_after = len(events)
+                removed = max(0, total_before - total_after)
+                print(f"[CLEANUP] 事件保留: 原={total_before}, 新={total_after}, 删除={removed}")
+            except:
+                pass
         except:
             pass
         try:
@@ -383,7 +543,28 @@ def cleanup_loop():
                             pass
         except:
             pass
-        time.sleep(3600)  # 每小时清理一次
+        try:
+            offsets = _load_offsets()
+            changed = False
+            removed_cnt = 0
+            for fp in list(offsets.keys()):
+                try:
+                    if not os.path.exists(fp):
+                        del offsets[fp]
+                        changed = True
+                        removed_cnt += 1
+                except:
+                    continue
+            if changed:
+                _save_offsets(offsets)
+                try:
+                    print(f"[CLEANUP] 偏移表清理: 移除={removed_cnt}")
+                except:
+                    pass
+        except:
+            pass
+    except:
+        pass
 
 def init_alert_state():
     """初始化告警状态"""
@@ -396,5 +577,3 @@ def get_last_scan_ts():
     if last_scan_ts:
         return last_scan_ts
     return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-
-

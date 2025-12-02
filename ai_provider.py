@@ -2,6 +2,9 @@ import os
 import time
 import urllib.request
 import urllib.error
+import sys
+import subprocess
+from config import read_config
 
 
 class AIProvider:
@@ -88,6 +91,34 @@ class AIProvider:
             "generated_at": now,
             "cache_ttl_sec": 600,
         }
+
+    def generate(self, window=None, types=None, host_id=None, timeout_sec=60):
+        py = sys.executable or 'python'
+        root = os.path.dirname(os.path.abspath(__file__))
+        main_py = os.path.join(root, 'backend', 'main.py')
+        cfg = read_config()
+        mode = (cfg.get('detection', {}) or {}).get('search_mode', 'mixed')
+        cmd = [py, main_py, '--detection-mode', mode, '--llm-analysis']
+        env = os.environ.copy()
+        env['PYTHONIOENCODING'] = 'utf-8'
+        try:
+            p = subprocess.run(cmd, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='ignore', timeout=timeout_sec, env=env)
+            out = (p.stdout or '').strip()
+            return {
+                "returncode": p.returncode,
+                "output": out,
+                "generated": p.returncode == 0,
+                "report_path": self.llm_report_path,
+                "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            }
+        except Exception as e:
+            return {
+                "returncode": 1,
+                "output": str(e),
+                "generated": False,
+                "report_path": self.llm_report_path,
+                "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            }
 
 
 # 全局 AI 提供者实例
