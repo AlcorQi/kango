@@ -34,6 +34,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._handle_ai_suggestions(parsed)
             elif p == '/api/v1/hosts':
                 return self._handle_list_hosts()
+            elif p == '/api/v1/test-email':
+                return self._handle_test_email()
             else:
                 return error_response(self, 404, 'NOT_FOUND', 'unknown path')
         
@@ -315,6 +317,38 @@ class Handler(SimpleHTTPRequestHandler):
             "total": len(hosts)
         })
 
+    def _handle_test_email(self):
+        try:
+            cfg = read_config()
+        except:
+            cfg = {}
+        alerts = cfg.get('alerts', {})
+        emails = alerts.get('emails') or []
+        to = emails[0] if emails else None
+        import os
+        env = {
+            "smtp_host_set": bool(os.environ.get('SMTP_HOST')),
+            "smtp_port": os.environ.get('SMTP_PORT') or "",
+            "smtp_tls": os.environ.get('SMTP_TLS') in ('1', 'true', 'True'),
+            "smtp_user_set": bool(os.environ.get('SMTP_USER')),
+            "smtp_pass_set": bool(os.environ.get('SMTP_PASS')),
+            "smtp_from_set": bool(os.environ.get('SMTP_FROM')),
+        }
+        if not to:
+            return json_response(self, {"sent": False, "reason": "no_recipient", "env": env})
+        from ingest_manager import _send_email
+        import time
+        ok = False
+        try:
+            ok = _send_email(to, "测试邮件", f"测试发送时间: {time.strftime('%Y-%m-%d %H:%M:%SZ', time.gmtime())}")
+        except:
+            ok = False
+        if ok:
+            return json_response(self, {"sent": True, "to": to, "env": env})
+        else:
+            reason = "smtp_not_configured" if not env["smtp_host_set"] else "send_failed"
+            return json_response(self, {"sent": False, "to": to, "reason": reason, "env": env})
+
     def do_OPTIONS(self):
         """处理 CORS 预检请求"""
         self.send_response(200)
@@ -349,7 +383,7 @@ class Handler(SimpleHTTPRequestHandler):
         except:
             return error_response(self, 400, 'INVALID_ARGUMENT', 'invalid json')
         
-        allowed = {"schema_version", "detection", "alerts", "ui", "security"}
+        allowed = {"schema_version", "detection", "alerts", "ui", "security", "smtp"}
         if set(cfg.keys()) - allowed:
             return error_response(self, 400, 'INVALID_ARGUMENT', 'unknown fields')
         
